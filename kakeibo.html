@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>家計管理</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Hiragino Sans','Yu Gothic',sans-serif; background:#f0f2f5; color:#333; font-size:14px; }
+
+    header { background:#2c3e50; color:white; padding:16px 24px; font-size:1.2rem; font-weight:bold; display:flex; align-items:center; justify-content:space-between; }
+    .btn-export { background:#27ae60; color:white; border:none; border-radius:8px; padding:8px 20px; font-size:0.88rem; font-family:inherit; font-weight:bold; cursor:pointer; transition:opacity 0.2s; }
+    .btn-export:hover { opacity:0.85; }
+
+    .container { max-width:1200px; margin:24px auto; padding:0 16px; display:grid; gap:20px; }
+    .card { background:white; border-radius:12px; padding:24px; box-shadow:0 2px 10px rgba(0,0,0,0.07); }
+    .card-title { font-size:0.9rem; font-weight:bold; color:#555; margin-bottom:16px; padding-bottom:10px; border-bottom:2px solid #f0f0f0; }
+
+    .month-nav { display:flex; align-items:center; justify-content:center; gap:16px; }
+    .month-nav button { background:#ecf0f1; border:none; border-radius:8px; padding:8px 16px; cursor:pointer; font-size:1rem; font-family:inherit; transition:background 0.15s; }
+    .month-nav button:hover { background:#d5d8dc; }
+    .month-label { font-size:1.3rem; font-weight:bold; min-width:160px; text-align:center; }
+    .month-label.is-forecast { color:#999; }
+
+    .kakeibo-table { width:100%; border-collapse:collapse; }
+    .kakeibo-table th, .kakeibo-table td { padding:9px 14px; text-align:left; border-bottom:1px solid #f0f0f0; }
+    .kakeibo-table th { font-size:0.78rem; color:#888; background:#fafafa; }
+
+    .section-header td { font-weight:bold; font-size:0.85rem; padding:11px 14px 8px; background:#f5f5f5; }
+    .section-header td:last-child { text-align:right; }
+    .section-income td { color:#1a7a3a; }
+    .section-expense td { color:#b03a2e; }
+
+    .subsection-header td { font-weight:bold; font-size:0.82rem; padding:10px 14px 6px 22px; color:#555; background:#fafafa; }
+    .subsection-header td:last-child { text-align:right; }
+
+    .indented td:first-child { padding-left:28px; }
+    .sub-label { font-size:0.76rem; color:#aaa; padding:3px 14px 1px 26px; border-bottom:none; display:block; }
+
+    .balance-row td { font-weight:bold; font-size:1rem; border-top:2px solid #e0e0e0; padding-top:12px; }
+
+    .fixed-label { font-size:0.75rem; color:#aaa; margin-left:5px; }
+
+    .amount-cell { text-align:right; font-weight:bold; }
+    .income-val  { color:#27ae60; }
+    .expense-val { color:#e74c3c; }
+    .balance-pos { color:#2980b9; }
+    .balance-neg { color:#e74c3c; }
+    .savings-val { color:#6c3483; }
+    .cash-val    { color:#1a5276; }
+    .sec-val     { color:#784212; }
+
+    .amount-input { width:100%; padding:6px 10px; border:1px solid #ddd; border-radius:6px; font-size:0.92rem; font-family:inherit; text-align:right; background:#fafeff; transition:border-color 0.15s; }
+    .amount-input:focus { outline:none; border-color:#3498db; background:white; }
+    .amount-input[readonly] { background:#f4f4f4; color:#888; cursor:default; border-color:#e0e0e0; }
+
+    .memo-row td:first-child { padding-left:28px; color:#aaa; font-size:0.8rem; }
+    .memo-input { width:100%; padding:5px 10px; border:1px solid #eee; border-radius:6px; font-size:0.85rem; font-family:inherit; background:#fffef8; resize:vertical; min-height:34px; max-height:68px; color:#666; }
+    .memo-input:focus { outline:none; border-color:#f39c12; }
+
+    .save-row { display:flex; justify-content:flex-end; align-items:center; margin-top:16px; gap:12px; }
+    .btn-save { background:#2980b9; color:white; border:none; border-radius:8px; padding:10px 28px; font-size:0.95rem; font-family:inherit; font-weight:bold; cursor:pointer; transition:opacity 0.2s; }
+    .btn-save:hover { opacity:0.85; }
+    .saved-toast { display:none; color:#27ae60; font-size:0.88rem; }
+
+    .savings-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; padding-top:14px; border-top:2px solid #f0f0f0; }
+    .ss-item { background:#f8f9fa; border-radius:8px; padding:12px 14px; text-align:center; }
+    .ss-item .ss-label { font-size:0.78rem; color:#888; margin-bottom:4px; }
+    .ss-item .ss-val { font-size:1.1rem; font-weight:bold; }
+
+    /* 推移テーブル */
+    .table-scroll { overflow-x:auto; }
+    .trend-table { width:100%; border-collapse:separate; border-spacing:0; font-size:0.83rem; }
+    .trend-table th { background:#f8f9fa; padding:8px 12px; text-align:right; color:#555; border-bottom:2px solid #e0e0e0; white-space:nowrap; font-weight:bold; }
+    .trend-table th:first-child { text-align:left; min-width:148px; }
+    .trend-table th.fcst { color:#bbb; font-style:italic; }
+
+    .trend-table td { padding:7px 12px; text-align:right; border-bottom:1px solid #f0f0f0; white-space:nowrap; }
+    .trend-table td:first-child { text-align:left; }
+    .trend-table tr:hover td { background:#fafbff; }
+
+    /* JS sticky — 先頭セルは translateX で移動するため背景が必要 */
+    .trend-table th:first-child,
+    .trend-table td:first-child { background:white; }
+    .trend-table thead th:first-child { background:#f8f9fa; }
+    .trend-table .t-sect td:first-child   { background:#f5f5f5; }
+    .trend-table .t-sav-total td:first-child { background:#f3eefa; }
+    .trend-table .t-sub-label td:first-child { background:#fff; }
+    /* スクロール中に隣セルが透けないよう影で仕切り */
+    .trend-table th:first-child,
+    .trend-table td:first-child { box-shadow:2px 0 4px -1px rgba(0,0,0,0.08); }
+
+    .trend-table .t-sect td { font-weight:bold; font-size:0.82rem; padding:10px 12px 7px; background:#f5f5f5; }
+    .trend-table .t-income-h td { color:#1a7a3a; }
+    .trend-table .t-expense-h td { color:#b03a2e; }
+    .trend-table .t-cash-h td   { color:#1a5276; }
+    .trend-table .t-sec-h td    { color:#784212; }
+
+    .trend-table .t-sub-label td { font-size:0.76rem; color:#999; padding:6px 12px 3px 22px; border:none; background:#fff; }
+    .trend-table .t-indent td:first-child { padding-left:22px; }
+    .trend-table .t-balance td { font-weight:bold; border-top:2px solid #e0e0e0; }
+    .trend-table .t-sav-total td { font-weight:bold; font-size:0.95rem; background:#f3eefa; border-top:2px solid #d2b4de; border-bottom:2px solid #d2b4de; }
+    .trend-table .t-tokubetsu td { font-style:italic; }
+    .trend-table .t-spacer td { padding:2px; border:none; }
+
+    .fcst-val { opacity:0.55; font-style:italic; }
+    .no-data { text-align:center; color:#bbb; padding:28px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>💰 家計管理</span>
+  <button class="btn-export" onclick="exportToExcel()">Excelエクスポート</button>
+</header>
+
+<div class="container">
+
+  <div class="card">
+    <div class="card-title">月別推移一覧</div>
+    <div class="table-scroll"><table class="trend-table"><thead id="b-thead"></thead><tbody id="b-tbody"></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">貯蓄推移一覧</div>
+    <div class="table-scroll"><table class="trend-table"><thead id="s-thead"></thead><tbody id="s-tbody"></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <div class="month-nav">
+      <button onclick="changeMonth(-1)">◀</button>
+      <div class="month-label" id="month-label"></div>
+      <button onclick="changeMonth(1)">▶</button>
+    </div>
+  </div>
+
+  <!-- 月次入力 -->
+  <div class="card">
+    <div class="card-title">月次入力</div>
+    <table class="kakeibo-table">
+      <colgroup><col style="width:52%"><col style="width:48%"></colgroup>
+      <thead><tr><th>項目</th><th style="text-align:right">金額（円）</th></tr></thead>
+      <tbody>
+        <tr class="section-header section-income">
+          <td>▼ 入金</td><td class="income-val" id="income-sub">¥0</td>
+        </tr>
+        <tr><td>夫</td><td><input class="amount-input" type="number" id="i_husband" min="0" placeholder="0" oninput="calc()"></td></tr>
+        <tr><td>妻</td><td><input class="amount-input" type="number" id="i_wife" min="0" placeholder="0" oninput="calc()"></td></tr>
+        <tr><td>給付金等</td><td><input class="amount-input" type="number" id="i_kyufu" min="0" placeholder="0" oninput="calc()"></td></tr>
+        <tr><td>その他</td><td><input class="amount-input" type="number" id="i_other" min="0" placeholder="0" oninput="calc()"></td></tr>
+        <tr class="memo-row"><td>メモ</td><td><textarea class="memo-input" id="i_memo" placeholder="メモ（任意）"></textarea></td></tr>
+
+        <tr><td colspan="2" style="padding:4px 0;border:none;"></td></tr>
+
+        <tr class="section-header section-expense">
+          <td>▼ 出金</td><td class="expense-val" id="expense-sub">¥0</td>
+        </tr>
+        <tr><td>カーローン <span class="fixed-label">固定</span></td><td><input class="amount-input" type="number" id="e_carloan" readonly oninput="calc()"></td></tr>
+        <tr><td>駐車場 <span class="fixed-label">固定</span></td><td><input class="amount-input" type="number" id="e_parking" readonly oninput="calc()"></td></tr>
+        <tr><td>土地ローン</td><td><input class="amount-input" type="number" id="e_landloan" min="0" placeholder="0" oninput="calc()"></td></tr>
+        <tr><td>投信口座引落</td><td><input class="amount-input" type="number" id="e_trust_acct" min="0" placeholder="0" oninput="calc()"></td></tr>
+        <tr><td>投信カード引落 <span class="fixed-label">固定</span></td><td><input class="amount-input" type="number" id="e_trust_card" readonly oninput="calc()"></td></tr>
+        <tr><td>その他引落</td><td><input class="amount-input" type="number" id="e_other" min="0" placeholder="0" oninput="calc()"></td></tr>
+        <tr class="memo-row"><td>メモ</td><td><textarea class="memo-input" id="e_memo" placeholder="メモ（任意）"></textarea></td></tr>
+        <tr><td>生活費カード決済</td><td><input class="amount-input" type="number" id="e_living" min="0" placeholder="0" oninput="calc()"></td></tr>
+
+        <tr><td colspan="2" style="padding:4px 0;border:none;"></td></tr>
+        <tr class="balance-row">
+          <td>収支</td><td class="amount-cell balance-pos" id="balance">¥0</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="save-row">
+      <span class="saved-toast" id="b-toast">✔ 保存しました</span>
+      <button class="btn-save" onclick="saveData()">保存</button>
+    </div>
+  </div>
+
+  <!-- 貯蓄内訳入力 -->
+  <div class="card">
+    <div class="card-title">貯蓄内訳入力（月末時点）</div>
+    <table class="kakeibo-table">
+      <colgroup><col style="width:52%"><col style="width:48%"></colgroup>
+      <thead><tr><th>項目</th><th style="text-align:right">金額（円）</th></tr></thead>
+      <tbody>
+        <tr class="subsection-header">
+          <td>現金</td><td class="cash-val" id="s_cash_hdr">¥0</td>
+        </tr>
+        <tr class="indented"><td>生活防衛費</td><td><input class="amount-input" type="number" id="s_seikatsukibo" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr class="indented"><td>教育費</td><td><input class="amount-input" type="number" id="s_kyoiku" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr class="indented"><td>住宅積立</td><td><input class="amount-input" type="number" id="s_jyutaku" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr class="indented"><td>特別支出 <span class="fixed-label">自動</span></td><td><div class="amount-cell savings-val" id="s_tokubetsu">—</div></td></tr>
+
+        <tr><td colspan="2" style="padding:4px 0;border:none;"></td></tr>
+
+        <tr class="subsection-header">
+          <td>証券</td><td class="sec-val" id="s_sec_hdr">¥0</td>
+        </tr>
+        <tr><td colspan="2" class="sub-label">夫</td></tr>
+        <tr class="indented"><td>NISA</td><td><input class="amount-input" type="number" id="s_otto_nisa" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr class="indented"><td>投信</td><td><input class="amount-input" type="number" id="s_otto_toushi" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr class="indented"><td>株式</td><td><input class="amount-input" type="number" id="s_otto_kabu" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr class="indented"><td>債権</td><td><input class="amount-input" type="number" id="s_otto_saikken" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr><td colspan="2" class="sub-label">妻</td></tr>
+        <tr class="indented"><td>NISA</td><td><input class="amount-input" type="number" id="s_tsuma_nisa" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr class="indented"><td>株式</td><td><input class="amount-input" type="number" id="s_tsuma_kabu" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+      </tbody>
+    </table>
+
+    <div class="savings-summary">
+      <div class="ss-item"><div class="ss-label">現金合計</div><div class="ss-val cash-val" id="ss_cash">¥0</div></div>
+      <div class="ss-item"><div class="ss-label">証券合計</div><div class="ss-val sec-val" id="ss_sec">¥0</div></div>
+      <div class="ss-item" style="background:#f3eefa"><div class="ss-label">合計</div><div class="ss-val savings-val" id="ss_total">¥0</div></div>
+    </div>
+
+    <div class="save-row">
+      <span class="saved-toast" id="s-toast">✔ 保存しました</span>
+      <button class="btn-save" onclick="saveSav()">保存</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const STORAGE_KEY = 'kakeibo_v3';
+  const MIN_MONTH  = '2026-04';
+  const CASH_BASE  = 3708678;
+
+  const FIXED = { e_carloan:62600, e_parking:29845, e_trust_card:64500 };
+
+  const SAV_INIT = {
+    s_seikatsukibo:160657, s_kyoiku:1360000, s_jyutaku:983612,
+    s_otto_nisa:4743397, s_otto_toushi:977829, s_otto_kabu:0,
+    s_otto_saikken:200000, s_tsuma_nisa:0, s_tsuma_kabu:0,
+  };
+
+  const INC = [
+    {id:'i_husband', label:'夫'},
+    {id:'i_wife',    label:'妻'},
+    {id:'i_kyufu',   label:'給付金等'},
+    {id:'i_other',   label:'その他'},
+  ];
+  const EXP = [
+    {id:'e_carloan',    label:'カーローン',     fixed:true},
+    {id:'e_parking',    label:'駐車場',         fixed:true},
+    {id:'e_landloan',   label:'土地ローン'},
+    {id:'e_trust_acct', label:'投信口座引落'},
+    {id:'e_trust_card', label:'投信カード引落', fixed:true},
+    {id:'e_other',      label:'その他引落'},
+    {id:'e_living',     label:'生活費カード決済'},
+  ];
+  const CASH_F = [
+    {id:'s_seikatsukibo', label:'生活防衛費'},
+    {id:'s_kyoiku',       label:'教育費'},
+    {id:'s_jyutaku',      label:'住宅積立'},
+  ];
+  const SEC_F = [
+    {id:'s_otto_nisa',    label:'NISA',   sub:'夫'},
+    {id:'s_otto_toushi',  label:'投信',   sub:'夫'},
+    {id:'s_otto_kabu',    label:'株式',   sub:'夫'},
+    {id:'s_otto_saikken', label:'債権',   sub:'夫'},
+    {id:'s_tsuma_nisa',   label:'NISA',   sub:'妻'},
+    {id:'s_tsuma_kabu',   label:'株式',   sub:'妻'},
+  ];
+  const ALL_SAV_F = [...CASH_F, ...SEC_F];
+
+  let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  let fcast = {}; // future forecasts
+
+  let currentMonth = (() => {
+    const t = mk(new Date());
+    return t >= MIN_MONTH ? t : MIN_MONTH;
+  })();
+
+  /* ── utils ── */
+  function mk(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+  function fmt(n) { return '¥' + Math.abs(n).toLocaleString(); }
+  function gv(id) { return parseInt(document.getElementById(id).value) || 0; }
+  function savedMonths() { return Object.keys(data).filter(m=>m>=MIN_MONTH).sort(); }
+  function allMonths() { return [...new Set([...Object.keys(data),...Object.keys(fcast)])].filter(m=>m>=MIN_MONTH).sort(); }
+  function isFcast(m) { return !data[m] && !!fcast[m]; }
+  function mdata(m) { return data[m] || fcast[m] || {}; }
+
+  /* ── future forecast builder ── */
+  function buildFcast() {
+    fcast = {};
+    const today = mk(new Date());
+    const [ty, tm] = today.split('-').map(Number);
+
+    for (let i = 1; i <= 12; i++) {
+      const mkey = mk(new Date(ty, tm-1+i, 1));
+      if (data[mkey]) continue;
+
+      const prevKeys = [...Object.keys(data).filter(m=>m>=MIN_MONTH), ...Object.keys(fcast)]
+        .filter(m => m < mkey).sort();
+      const prev = prevKeys.length ? mdata(prevKeys[prevKeys.length-1]) : {};
+      const prevSav = prevKeys.length ? getSavData(prevKeys[prevKeys.length-1]) : SAV_INIT;
+
+      fcast[mkey] = {
+        i_husband: prev.i_husband || 0,
+        i_wife:    prev.i_wife    || 0,
+        i_kyufu:   0, i_other: 0, i_memo: '',
+        e_landloan:   prev.e_landloan   || 0,
+        e_trust_acct: prev.e_trust_acct || 0,
+        e_other: 0, e_memo: '',
+        e_living: 237000,
+        _fcast: true,
+        savings: {
+          s_seikatsukibo: prevSav.s_seikatsukibo || 0,
+          s_kyoiku:       (prevSav.s_kyoiku       || 0) + 80000,
+          s_jyutaku:      prevSav.s_jyutaku       || 0,
+          s_otto_nisa:    (prevSav.s_otto_nisa    || 0) + 65000,
+          s_otto_toushi:  prevSav.s_otto_toushi   || 0,
+          s_otto_kabu:    prevSav.s_otto_kabu     || 0,
+          s_otto_saikken: prevSav.s_otto_saikken  || 0,
+          s_tsuma_nisa:   prevSav.s_tsuma_nisa    || 0,
+          s_tsuma_kabu:   prevSav.s_tsuma_kabu    || 0,
+        }
+      };
+    }
+  }
+
+  /* ── finance calcs ── */
+  function mIncome(m)  { const d=mdata(m); return INC.reduce((s,f)=>s+(d[f.id]||0),0); }
+  function mExpense(m) { const d=mdata(m); return EXP.reduce((s,f)=>s+(FIXED[f.id]!==undefined?FIXED[f.id]:(d[f.id]||0)),0); }
+  function mBal(m)     { return (!data[m]&&!fcast[m]) ? 0 : mIncome(m)-mExpense(m); }
+  function cumBal(upto){ return allMonths().filter(m=>m<=upto).reduce((s,m)=>s+mBal(m),0); }
+  function cashTotal(m){ return CASH_BASE + cumBal(m); }
+
+  function getSavData(mkey) {
+    const ms = allMonths().filter(m=>m<=mkey);
+    for (let i=ms.length-1; i>=0; i--) {
+      const d = mdata(ms[i]);
+      if (d && d.savings) return d.savings;
+    }
+    return SAV_INIT;
+  }
+
+  function secTotal(sav) { return SEC_F.reduce((s,f)=>s+(sav[f.id]||0),0); }
+  function cashFixed(sav){ return CASH_F.reduce((s,f)=>s+(sav[f.id]||0),0); }
+  function tokubetsu(cashTot, sav) { return cashTot - cashFixed(sav); }
+  function savTotal(m) { return cashTotal(m) + secTotal(getSavData(m)); }
+
+  /* ── input form calcs ── */
+  function calc() {
+    const inc = INC.reduce((s,f)=>s+gv(f.id),0);
+    const exp = EXP.reduce((s,f)=>s+gv(f.id),0);
+    const bal = inc - exp;
+    document.getElementById('income-sub').textContent  = fmt(inc);
+    document.getElementById('expense-sub').textContent = fmt(exp);
+    const el = document.getElementById('balance');
+    el.textContent = (bal>=0?'+':'-')+fmt(bal);
+    el.className = 'amount-cell '+(bal>=0?'balance-pos':'balance-neg');
+    calcSav();
+  }
+
+  function calcSav() {
+    const ct = cashTotal(currentMonth);
+    const sav = {}; ALL_SAV_F.forEach(f=>{ sav[f.id]=gv(f.id); });
+    const st  = secTotal(sav);
+    const tok = tokubetsu(ct, sav);
+    const tot = ct + st;
+
+    const tokEl = document.getElementById('s_tokubetsu');
+    tokEl.textContent = tok>=0 ? fmt(tok) : '-'+fmt(tok);
+    tokEl.className = 'amount-cell '+(tok>=0?'savings-val':'balance-neg');
+
+    document.getElementById('s_cash_hdr').textContent = fmt(ct);
+    document.getElementById('s_sec_hdr').textContent  = fmt(st);
+    document.getElementById('ss_cash').textContent    = fmt(ct);
+    document.getElementById('ss_sec').textContent     = fmt(st);
+    document.getElementById('ss_total').textContent   = fmt(tot);
+  }
+
+  /* ── load / save ── */
+  function loadMonth(mkey) {
+    const src = data[mkey] || fcast[mkey] || {};
+    INC.forEach(f => { const e=document.getElementById(f.id); e.value = FIXED[f.id]!==undefined?FIXED[f.id]:(src[f.id]||''); });
+    EXP.forEach(f => { const e=document.getElementById(f.id); e.value = FIXED[f.id]!==undefined?FIXED[f.id]:(src[f.id]||''); });
+    document.getElementById('i_memo').value = src.i_memo || '';
+    document.getElementById('e_memo').value = src.e_memo || '';
+    const sav = getSavData(mkey);
+    ALL_SAV_F.forEach(f => { document.getElementById(f.id).value = sav[f.id] || ''; });
+    calc();
+  }
+
+  function persist() {
+    Object.keys(data).filter(m=>m<MIN_MONTH).forEach(m=>delete data[m]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function saveData() {
+    const e = data[currentMonth] || {};
+    INC.forEach(f => { e[f.id] = parseInt(document.getElementById(f.id).value)||0; });
+    EXP.forEach(f => { e[f.id] = parseInt(document.getElementById(f.id).value)||0; });
+    e.i_memo = document.getElementById('i_memo').value.trim();
+    e.e_memo = document.getElementById('e_memo').value.trim();
+    data[currentMonth] = e;
+    persist(); buildFcast(); toast('b-toast'); renderAll();
+  }
+
+  function saveSav() {
+    const e = data[currentMonth] || {};
+    const sav = {}; ALL_SAV_F.forEach(f => { sav[f.id] = parseInt(document.getElementById(f.id).value)||0; });
+    e.savings = sav;
+    data[currentMonth] = e;
+    persist(); buildFcast(); toast('s-toast'); renderAll();
+  }
+
+  function toast(id) {
+    const el = document.getElementById(id);
+    el.style.display = 'inline';
+    setTimeout(()=>{ el.style.display='none'; }, 2000);
+  }
+
+  /* ── month nav ── */
+  function changeMonth(delta) {
+    const [y,m] = currentMonth.split('-').map(Number);
+    const next = mk(new Date(y, m-1+delta, 1));
+    if (next < MIN_MONTH) return;
+    currentMonth = next;
+    updateLabel(); loadMonth(currentMonth);
+  }
+
+  function updateLabel() {
+    const [y,m] = currentMonth.split('-').map(Number);
+    const el = document.getElementById('month-label');
+    const fc = isFcast(currentMonth);
+    el.textContent = `${y}年${m}月${fc?'（予測）':''}`;
+    el.className = 'month-label' + (fc?' is-forecast':'');
+  }
+
+  /* ── render ── */
+  function renderAll() { renderBudget(); renderSavings(); initStickyCol(); }
+
+  function hdr(months) {
+    return '<tr><th>項目</th>' +
+      months.map(m=>`<th class="${isFcast(m)?'fcst':''}">${m.replace('-','/')}</th>`).join('') +
+      '</tr>';
+  }
+
+  function buildRows(rows, months) {
+    return rows.map(row => {
+      if (row.spacer) return `<tr class="t-spacer"><td colspan="${months.length+1}"></td></tr>`;
+
+      if (row.sublabel) return `<tr class="t-sub-label"><td colspan="${months.length+1}">${row.sublabel}</td></tr>`;
+
+      // Section header with subtotals per month
+      if (row.sect) {
+        const cells = row.vals.map((v,i) => {
+          const fc = isFcast(months[i]) ? ' fcst-val' : '';
+          const cls = row.vcls;
+          const d = v===0?'—':fmt(v);
+          return `<td class="${cls}${fc}">${d}</td>`;
+        }).join('');
+        return `<tr class="t-sect ${row.cls}"><td>${row.label}</td>${cells}</tr>`;
+      }
+
+      // Data row
+      let rc = row.rc||'';
+      const ic = row.indent ? 't-indent' : '';
+      const cells = row.vals.map((v,i) => {
+        const fc = isFcast(months[i]) ? ' fcst-val' : '';
+        let cls='', d='';
+        if (row.type==='inc')   { cls='income-val';  d=v===0?'—':fmt(v); }
+        else if (row.type==='exp')   { cls='expense-val'; d=v===0?'—':fmt(v); }
+        else if (row.type==='bal')   { cls=v>=0?'balance-pos':'balance-neg'; d=(v>=0?'+':'-')+fmt(v); }
+        else if (row.type==='cash')  { cls=v<0?'balance-neg':'cash-val'; d=v===0?'—':fmt(v); }
+        else if (row.type==='sec')   { cls='sec-val'; d=v===0?'—':fmt(v); }
+        else if (row.type==='sav')   { cls='savings-val'; d=fmt(v); }
+        return `<td class="${cls}${fc}">${d}</td>`;
+      }).join('');
+      return `<tr class="${rc} ${ic}"><td>${row.label}</td>${cells}</tr>`;
+    }).join('');
+  }
+
+  function renderBudget() {
+    const months = allMonths();
+    const thead = document.getElementById('b-thead');
+    const tbody = document.getElementById('b-tbody');
+    if (!months.length) { thead.innerHTML=''; tbody.innerHTML=`<tr><td class="no-data" colspan="2">保存データなし</td></tr>`; return; }
+
+    thead.innerHTML = hdr(months);
+
+    const rows = [];
+    rows.push({ sect:true, label:'▼ 入金', cls:'t-income-h', vcls:'income-val', vals:months.map(m=>mIncome(m)) });
+    INC.forEach(f => rows.push({ label:f.label, type:'inc', indent:true, vals:months.map(m=>(mdata(m)[f.id]||0)) }));
+    rows.push({ spacer:true });
+    rows.push({ sect:true, label:'▼ 出金', cls:'t-expense-h', vcls:'expense-val', vals:months.map(m=>mExpense(m)) });
+    EXP.forEach(f => rows.push({ label:f.label+(f.fixed?' *':''), type:'exp', indent:true, vals:months.map(m=>FIXED[f.id]!==undefined?FIXED[f.id]:(mdata(m)[f.id]||0)) }));
+    rows.push({ spacer:true });
+    rows.push({ label:'収支', type:'bal', rc:'t-balance', vals:months.map(m=>mBal(m)) });
+
+    tbody.innerHTML = buildRows(rows, months);
+  }
+
+  function renderSavings() {
+    const months = allMonths();
+    const thead = document.getElementById('s-thead');
+    const tbody = document.getElementById('s-tbody');
+    if (!months.length) { thead.innerHTML=''; tbody.innerHTML=`<tr><td class="no-data" colspan="2">保存データなし</td></tr>`; return; }
+
+    thead.innerHTML = hdr(months);
+
+    const rows = [];
+    rows.push({ label:'合計', type:'sav', rc:'t-sav-total', vals:months.map(m=>savTotal(m)) });
+    rows.push({ spacer:true });
+
+    rows.push({ sect:true, label:'▼ 現金', cls:'t-cash-h', vcls:'cash-val', vals:months.map(m=>cashTotal(m)) });
+    CASH_F.forEach(f => rows.push({ label:f.label, type:'cash', indent:true, vals:months.map(m=>(getSavData(m)[f.id]||0)) }));
+    rows.push({ label:'特別支出', type:'cash', indent:true, rc:'t-tokubetsu', vals:months.map(m=>tokubetsu(cashTotal(m),getSavData(m))) });
+
+    rows.push({ spacer:true });
+
+    rows.push({ sect:true, label:'▼ 証券', cls:'t-sec-h', vcls:'sec-val', vals:months.map(m=>secTotal(getSavData(m))) });
+    rows.push({ sublabel:'夫' });
+    SEC_F.filter(f=>f.sub==='夫').forEach(f => rows.push({ label:f.label, type:'sec', indent:true, vals:months.map(m=>(getSavData(m)[f.id]||0)) }));
+    rows.push({ sublabel:'妻' });
+    SEC_F.filter(f=>f.sub==='妻').forEach(f => rows.push({ label:f.label, type:'sec', indent:true, vals:months.map(m=>(getSavData(m)[f.id]||0)) }));
+
+    tbody.innerHTML = buildRows(rows, months);
+  }
+
+  /* ── Excel export ── */
+  function exportToExcel() {
+    const months = allMonths();
+    if (!months.length) { alert('データがありません'); return; }
+    const wb = XLSX.utils.book_new();
+    const fh = m => m.replace('-','/') + (isFcast(m)?'(予)':'');
+
+    const b = [['項目',...months.map(fh)]];
+    b.push(['▼ 入金',...months.map(m=>mIncome(m))]);
+    INC.forEach(f=>b.push(['　'+f.label,...months.map(m=>mdata(m)[f.id]||0)]));
+    b.push([]);
+    b.push(['▼ 出金',...months.map(m=>mExpense(m))]);
+    EXP.forEach(f=>b.push(['　'+f.label,...months.map(m=>FIXED[f.id]!==undefined?FIXED[f.id]:(mdata(m)[f.id]||0))]));
+    b.push([]);
+    b.push(['収支',...months.map(m=>mBal(m))]);
+    b.push([]);
+    b.push(['メモ(入金その他)',...months.map(m=>mdata(m).i_memo||'')]);
+    b.push(['メモ(その他引落)',...months.map(m=>mdata(m).e_memo||'')]);
+
+    const ws1 = XLSX.utils.aoa_to_sheet(b);
+    ws1['!cols'] = [{wch:20},...months.map(()=>({wch:14}))];
+    XLSX.utils.book_append_sheet(wb, ws1, '家計推移');
+
+    const s = [['項目',...months.map(fh)]];
+    s.push(['合計',...months.map(m=>savTotal(m))]);
+    s.push([]);
+    s.push(['▼ 現金',...months.map(m=>cashTotal(m))]);
+    CASH_F.forEach(f=>s.push(['　'+f.label,...months.map(m=>getSavData(m)[f.id]||0)]));
+    s.push(['　特別支出',...months.map(m=>tokubetsu(cashTotal(m),getSavData(m)))]);
+    s.push([]);
+    s.push(['▼ 証券',...months.map(m=>secTotal(getSavData(m)))]);
+    s.push(['　夫']);
+    SEC_F.filter(f=>f.sub==='夫').forEach(f=>s.push(['　　'+f.label,...months.map(m=>getSavData(m)[f.id]||0)]));
+    s.push(['　妻']);
+    SEC_F.filter(f=>f.sub==='妻').forEach(f=>s.push(['　　'+f.label,...months.map(m=>getSavData(m)[f.id]||0)]));
+
+    const ws2 = XLSX.utils.aoa_to_sheet(s);
+    ws2['!cols'] = [{wch:20},...months.map(()=>({wch:14}))];
+    XLSX.utils.book_append_sheet(wb, ws2, '貯蓄推移');
+
+    const n = new Date();
+    XLSX.writeFile(wb, `家計管理_${n.getFullYear()}${String(n.getMonth()+1).padStart(2,'0')}${String(n.getDate()).padStart(2,'0')}.xlsx`);
+  }
+
+  /* ── 項目列スクロール固定 ── */
+  function initStickyCol() {
+    document.querySelectorAll('.table-scroll').forEach(el => {
+      el.onscroll = function() {
+        const x = this.scrollLeft;
+        this.querySelectorAll('tr > *:first-child').forEach(cell => {
+          cell.style.transform = `translateX(${x}px)`;
+        });
+      };
+      // 初期位置リセット
+      el.dispatchEvent(new Event('scroll'));
+    });
+  }
+
+  /* ── init ── */
+  Object.keys(data).filter(m=>m<MIN_MONTH).forEach(m=>delete data[m]);
+  persist();
+  buildFcast();
+  updateLabel();
+  loadMonth(currentMonth);
+  renderAll();
+  initStickyCol();
+</script>
+</body>
+</html>
