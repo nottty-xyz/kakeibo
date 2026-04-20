@@ -106,6 +106,38 @@
 
     .fcst-val { opacity:0.55; font-style:italic; }
     .no-data { text-align:center; color:#bbb; padding:28px; }
+
+    @media (max-width:640px) {
+      header { padding:12px 14px; font-size:1rem; }
+      .btn-export { padding:7px 12px; font-size:0.82rem; }
+
+      .container { margin:12px auto; padding:0 10px; gap:14px; }
+      .card { padding:16px 14px; }
+      .card-title { font-size:0.85rem; margin-bottom:12px; }
+
+      .month-nav { gap:10px; }
+      .month-nav button { padding:8px 14px; font-size:0.95rem; }
+      .month-label { font-size:1.1rem; min-width:130px; }
+
+      .kakeibo-table th, .kakeibo-table td { padding:8px 10px; font-size:0.88rem; }
+      .kakeibo-table colgroup col:first-child { width:48% !important; }
+
+      /* iOS auto-zoom 防止: font-size 16px 以上 */
+      .amount-input { font-size:16px; padding:8px 10px; }
+      .memo-input   { font-size:16px; }
+
+      .savings-summary { grid-template-columns:1fr 1fr; }
+      .savings-summary .ss-item:last-child { grid-column:1/-1; }
+
+      .save-row { margin-top:14px; }
+      .btn-save { width:100%; padding:12px; font-size:1rem; }
+
+      .trend-table th, .trend-table td { padding:6px 9px; font-size:0.78rem; }
+      .trend-table th:first-child { min-width:100px; }
+      .trend-table td:first-child { min-width:100px; }
+
+      .ss-item .ss-val { font-size:1rem; }
+    }
   </style>
 </head>
 <body>
@@ -288,7 +320,7 @@
     const today = mk(new Date());
     const [ty, tm] = today.split('-').map(Number);
 
-    for (let i = 1; i <= 12; i++) {
+    for (let i = 0; i <= 12; i++) {
       const mkey = mk(new Date(ty, tm-1+i, 1));
       if (data[mkey]) continue;
 
