@@ -5,13 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>家計管理</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Hiragino Sans','Yu Gothic',sans-serif; background:#f0f2f5; color:#333; font-size:14px; }
 
     header { background:#2c3e50; color:white; padding:16px 24px; font-size:1.2rem; font-weight:bold; display:flex; align-items:center; justify-content:space-between; }
+    .header-right { display:flex; align-items:center; gap:10px; }
     .btn-export { background:#27ae60; color:white; border:none; border-radius:8px; padding:8px 20px; font-size:0.88rem; font-family:inherit; font-weight:bold; cursor:pointer; transition:opacity 0.2s; }
     .btn-export:hover { opacity:0.85; }
+
+    /* Auth UI */
+    .auth-area { display:flex; align-items:center; gap:8px; }
+    .btn-signin { background:white; color:#2c3e50; border:none; border-radius:8px; padding:8px 16px; font-size:0.85rem; font-family:inherit; font-weight:bold; cursor:pointer; }
+    .user-avatar { width:28px; height:28px; border-radius:50%; object-fit:cover; border:2px solid rgba(255,255,255,0.5); }
+    .user-name { font-size:0.82rem; font-weight:normal; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .btn-signout { background:transparent; color:rgba(255,255,255,0.75); border:1px solid rgba(255,255,255,0.35); border-radius:6px; padding:5px 10px; font-size:0.78rem; font-family:inherit; cursor:pointer; }
+    .btn-signout:hover { background:rgba(255,255,255,0.1); }
+
+    /* Household bar */
+    .household-bar { background:#1e2f3d; color:#89b4c8; padding:7px 24px; font-size:0.78rem; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .hh-label { color:#6a8fa3; }
+    .hh-code { font-family:monospace; color:#7cc8e8; font-size:0.78rem; word-break:break-all; }
+    .btn-hh { background:transparent; border:1px solid #2e4a60; border-radius:4px; padding:3px 9px; color:#89b4c8; font-size:0.74rem; font-family:inherit; cursor:pointer; }
+    .btn-hh:hover { border-color:#7cc8e8; color:#7cc8e8; }
+    .hh-sep { color:#2e4a60; }
+
+    /* Overlays */
+    .overlay { position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; background:rgba(240,242,245,0.97); }
+    .overlay-card { background:white; border-radius:20px; padding:44px 40px; text-align:center; box-shadow:0 8px 48px rgba(0,0,0,0.13); max-width:340px; width:90%; }
+    .overlay-icon { font-size:2.6rem; margin-bottom:14px; }
+    .overlay-title { font-size:1.15rem; font-weight:bold; margin-bottom:8px; color:#2c3e50; }
+    .overlay-sub { font-size:0.86rem; color:#888; margin-bottom:28px; line-height:1.65; }
+    .btn-google { display:block; width:100%; background:#2c3e50; color:white; border:none; border-radius:10px; padding:14px 24px; font-size:0.95rem; font-family:inherit; font-weight:bold; cursor:pointer; transition:opacity 0.2s; }
+    .btn-google:hover { opacity:0.85; }
+
+    /* Loading spinner */
+    .spinner { width:36px; height:36px; border:3px solid #ddd; border-top-color:#3498db; border-radius:50%; animation:spin 0.75s linear infinite; margin:0 auto 14px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
 
     .container { max-width:1200px; margin:24px auto; padding:0 16px; display:grid; gap:20px; }
     .card { background:white; border-radius:12px; padding:24px; box-shadow:0 2px 10px rgba(0,0,0,0.07); }
@@ -69,74 +102,57 @@
     .ss-item .ss-label { font-size:0.78rem; color:#888; margin-bottom:4px; }
     .ss-item .ss-val { font-size:1.1rem; font-weight:bold; }
 
-    /* 推移テーブル */
     .table-scroll { overflow-x:auto; }
     .trend-table { width:100%; border-collapse:separate; border-spacing:0; font-size:0.83rem; }
     .trend-table th { background:#f8f9fa; padding:8px 12px; text-align:right; color:#555; border-bottom:2px solid #e0e0e0; white-space:nowrap; font-weight:bold; }
     .trend-table th:first-child { text-align:left; min-width:148px; }
     .trend-table th.fcst { color:#bbb; font-style:italic; }
-
     .trend-table td { padding:7px 12px; text-align:right; border-bottom:1px solid #f0f0f0; white-space:nowrap; }
     .trend-table td:first-child { text-align:left; }
     .trend-table tr:hover td { background:#fafbff; }
-
-    /* JS sticky — 先頭セルは translateX で移動するため背景が必要 */
-    .trend-table th:first-child,
-    .trend-table td:first-child { background:white; }
+    .trend-table th:first-child, .trend-table td:first-child { background:white; box-shadow:2px 0 4px -1px rgba(0,0,0,0.08); }
     .trend-table thead th:first-child { background:#f8f9fa; }
-    .trend-table .t-sect td:first-child   { background:#f5f5f5; }
+    .trend-table .t-sect td:first-child { background:#f5f5f5; }
     .trend-table .t-sav-total td:first-child { background:#f3eefa; }
     .trend-table .t-sub-label td:first-child { background:#fff; }
-    /* スクロール中に隣セルが透けないよう影で仕切り */
-    .trend-table th:first-child,
-    .trend-table td:first-child { box-shadow:2px 0 4px -1px rgba(0,0,0,0.08); }
-
     .trend-table .t-sect td { font-weight:bold; font-size:0.82rem; padding:10px 12px 7px; background:#f5f5f5; }
     .trend-table .t-income-h td { color:#1a7a3a; }
     .trend-table .t-expense-h td { color:#b03a2e; }
-    .trend-table .t-cash-h td   { color:#1a5276; }
-    .trend-table .t-sec-h td    { color:#784212; }
-
+    .trend-table .t-cash-h td { color:#1a5276; }
+    .trend-table .t-sec-h td { color:#784212; }
     .trend-table .t-sub-label td { font-size:0.76rem; color:#999; padding:6px 12px 3px 22px; border:none; background:#fff; }
     .trend-table .t-indent td:first-child { padding-left:22px; }
     .trend-table .t-balance td { font-weight:bold; border-top:2px solid #e0e0e0; }
     .trend-table .t-sav-total td { font-weight:bold; font-size:0.95rem; background:#f3eefa; border-top:2px solid #d2b4de; border-bottom:2px solid #d2b4de; }
     .trend-table .t-tokubetsu td { font-style:italic; }
     .trend-table .t-spacer td { padding:2px; border:none; }
-
     .fcst-val { opacity:0.55; font-style:italic; }
     .no-data { text-align:center; color:#bbb; padding:28px; }
 
     @media (max-width:640px) {
       header { padding:12px 14px; font-size:1rem; }
       .btn-export { padding:7px 12px; font-size:0.82rem; }
-
+      .user-name { display:none; }
+      .household-bar { padding:6px 14px; gap:7px; }
       .container { margin:12px auto; padding:0 10px; gap:14px; }
       .card { padding:16px 14px; }
       .card-title { font-size:0.85rem; margin-bottom:12px; }
-
       .month-nav { gap:10px; }
       .month-nav button { padding:8px 14px; font-size:0.95rem; }
       .month-label { font-size:1.1rem; min-width:130px; }
-
       .kakeibo-table th, .kakeibo-table td { padding:8px 10px; font-size:0.88rem; }
       .kakeibo-table colgroup col:first-child { width:48% !important; }
-
-      /* iOS auto-zoom 防止: font-size 16px 以上 */
       .amount-input { font-size:16px; padding:8px 10px; }
-      .memo-input   { font-size:16px; }
-
+      .memo-input { font-size:16px; }
       .savings-summary { grid-template-columns:1fr 1fr; }
       .savings-summary .ss-item:last-child { grid-column:1/-1; }
-
       .save-row { margin-top:14px; }
       .btn-save { width:100%; padding:12px; font-size:1rem; }
-
       .trend-table th, .trend-table td { padding:6px 9px; font-size:0.78rem; }
       .trend-table th:first-child { min-width:100px; }
       .trend-table td:first-child { min-width:100px; }
-
       .ss-item .ss-val { font-size:1rem; }
+      .overlay-card { padding:36px 24px; }
     }
   </style>
 </head>
@@ -144,8 +160,40 @@
 
 <header>
   <span>💰 家計管理</span>
-  <button class="btn-export" onclick="exportToExcel()">Excelエクスポート</button>
+  <div class="header-right">
+    <button class="btn-export" onclick="exportToExcel()">Excelエクスポート</button>
+    <div id="auth-area" class="auth-area"></div>
+  </div>
 </header>
+
+<div id="household-bar" class="household-bar" style="display:none;">
+  <span class="hh-label">世帯コード：</span>
+  <span class="hh-code" id="hh-code">—</span>
+  <button class="btn-hh" id="btn-copy" onclick="copyHHCode()">コピー</button>
+  <span class="hh-sep">|</span>
+  <button class="btn-hh" onclick="joinHousehold()">別の世帯に参加</button>
+  <span id="hh-leave-area" style="display:none;">
+    <button class="btn-hh" onclick="leaveHousehold()">自分の世帯に戻る</button>
+  </span>
+</div>
+
+<!-- ログインオーバーレイ -->
+<div id="login-overlay" class="overlay">
+  <div class="overlay-card">
+    <div class="overlay-icon">💰</div>
+    <div class="overlay-title">家計管理</div>
+    <div class="overlay-sub">Googleアカウントでログインすると<br>複数デバイスでデータを共有できます</div>
+    <button class="btn-google" onclick="signInGoogle()">Googleでログイン</button>
+  </div>
+</div>
+
+<!-- ローディングオーバーレイ -->
+<div id="loading-overlay" class="overlay" style="display:none;">
+  <div style="text-align:center;">
+    <div class="spinner"></div>
+    <div style="font-size:0.9rem; color:#888;">データを読み込み中...</div>
+  </div>
+</div>
 
 <div class="container">
 
@@ -255,10 +303,25 @@
 </div>
 
 <script>
-  const STORAGE_KEY = 'kakeibo_v3';
-  const MIN_MONTH  = '2026-04';
-  const CASH_BASE  = 3708678;
+  // ══════════════════════════════════════════════════════
+  const FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyDupng97uwXqRaqAcdZoHRaCsPnoTNLp8s",
+    authDomain:        "kakeibo-112a2.firebaseapp.com",
+    projectId:         "kakeibo-112a2",
+    storageBucket:     "kakeibo-112a2.firebasestorage.app",
+    messagingSenderId: "230527060023",
+    appId:             "1:230527060023:web:299b420e957640bc1157b2"
+  };
+  // ══════════════════════════════════════════════════════
 
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const auth = firebase.auth();
+  const db   = firebase.firestore();
+  db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+  const STORAGE_KEY = 'kakeibo_v3';
+  const MIN_MONTH   = '2026-04';
+  const CASH_BASE   = 3708678;
   const FIXED = { e_carloan:62600, e_parking:29845, e_trust_card:64500 };
 
   const SAV_INIT = {
@@ -297,8 +360,11 @@
   ];
   const ALL_SAV_F = [...CASH_F, ...SEC_F];
 
-  let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  let fcast = {}; // future forecasts
+  let data = {};
+  let fcast = {};
+  let currentUser   = null;
+  let householdId   = null;
+  let fsUnsubscribe = null;
 
   let currentMonth = (() => {
     const t = mk(new Date());
@@ -309,10 +375,149 @@
   function mk(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
   function fmt(n) { return '¥' + Math.abs(n).toLocaleString(); }
   function gv(id) { return parseInt(document.getElementById(id).value) || 0; }
-  function savedMonths() { return Object.keys(data).filter(m=>m>=MIN_MONTH).sort(); }
   function allMonths() { return [...new Set([...Object.keys(data),...Object.keys(fcast)])].filter(m=>m>=MIN_MONTH).sort(); }
   function isFcast(m) { return !data[m] && !!fcast[m]; }
   function mdata(m) { return data[m] || fcast[m] || {}; }
+
+  /* ── Firebase Auth ── */
+  auth.onAuthStateChanged(async user => {
+    currentUser = user;
+    if (user) {
+      const savedHH = localStorage.getItem(`kakeibo_hh_${user.uid}`);
+      householdId = savedHH || user.uid;
+      renderAuthUI(true, user);
+      renderHouseholdBar();
+      document.getElementById('login-overlay').style.display = 'none';
+      document.getElementById('loading-overlay').style.display = 'flex';
+      await migrateFromLocalStorage();
+      subscribeFirestore();
+    } else {
+      if (fsUnsubscribe) { fsUnsubscribe(); fsUnsubscribe = null; }
+      householdId = null;
+      data = {};
+      renderAuthUI(false, null);
+      document.getElementById('household-bar').style.display = 'none';
+      document.getElementById('loading-overlay').style.display = 'none';
+      document.getElementById('login-overlay').style.display = 'flex';
+    }
+  });
+
+  function signInGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(e => alert('ログインできませんでした: ' + e.message));
+  }
+
+  function doSignOut() {
+    if (!confirm('ログアウトしますか？')) return;
+    if (fsUnsubscribe) { fsUnsubscribe(); fsUnsubscribe = null; }
+    auth.signOut();
+  }
+
+  /* ── Firestore ── */
+  function subscribeFirestore() {
+    if (fsUnsubscribe) fsUnsubscribe();
+    document.getElementById('loading-overlay').style.display = 'flex';
+
+    fsUnsubscribe = db.collection('households').doc(householdId).collection('months')
+      .onSnapshot(snap => {
+        data = {};
+        snap.forEach(doc => {
+          if (doc.id >= MIN_MONTH) data[doc.id] = doc.data();
+        });
+        buildFcast();
+        updateLabel();
+        loadMonth(currentMonth);
+        renderAll();
+        document.getElementById('loading-overlay').style.display = 'none';
+      }, err => {
+        console.error('Firestore error:', err);
+        document.getElementById('loading-overlay').style.display = 'none';
+      });
+  }
+
+  async function persistFS(mkey) {
+    if (!householdId || !data[mkey]) return;
+    const toSave = Object.assign({}, data[mkey]);
+    delete toSave._fcast;
+    await db.collection('households').doc(householdId).collection('months').doc(mkey).set(toSave);
+  }
+
+  async function migrateFromLocalStorage() {
+    const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const months = Object.keys(local).filter(m => m >= MIN_MONTH);
+    if (!months.length) return;
+    const existing = await db.collection('households').doc(householdId).collection('months').limit(1).get();
+    if (!existing.empty) return;
+    const batch = db.batch();
+    months.forEach(m => {
+      const ref = db.collection('households').doc(householdId).collection('months').doc(m);
+      batch.set(ref, local[m]);
+    });
+    await batch.commit();
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  /* ── Auth / Household UI ── */
+  function renderAuthUI(signedIn, user) {
+    const el = document.getElementById('auth-area');
+    if (signedIn && user) {
+      const avatarEl = document.createElement('img');
+      avatarEl.className = 'user-avatar';
+      avatarEl.src = user.photoURL || '';
+      avatarEl.alt = '';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'user-name';
+      nameEl.textContent = user.displayName || user.email;
+      const outBtn = document.createElement('button');
+      outBtn.className = 'btn-signout';
+      outBtn.textContent = 'ログアウト';
+      outBtn.onclick = doSignOut;
+      el.innerHTML = '';
+      if (user.photoURL) el.appendChild(avatarEl);
+      el.appendChild(nameEl);
+      el.appendChild(outBtn);
+    } else {
+      el.innerHTML = '';
+      const btn = document.createElement('button');
+      btn.className = 'btn-signin';
+      btn.textContent = 'Googleでログイン';
+      btn.onclick = signInGoogle;
+      el.appendChild(btn);
+    }
+  }
+
+  function renderHouseholdBar() {
+    document.getElementById('household-bar').style.display = 'flex';
+    document.getElementById('hh-code').textContent = householdId;
+    document.getElementById('hh-leave-area').style.display =
+      (currentUser && householdId !== currentUser.uid) ? 'inline' : 'none';
+  }
+
+  function copyHHCode() {
+    navigator.clipboard.writeText(householdId).then(() => {
+      const btn = document.getElementById('btn-copy');
+      btn.textContent = 'コピー済み！';
+      setTimeout(() => { btn.textContent = 'コピー'; }, 2000);
+    });
+  }
+
+  function joinHousehold() {
+    const code = prompt('参加する世帯コードを入力してください：\n（相手の「世帯コード」をコピーして貼り付けてください）');
+    if (!code || !code.trim() || code.trim() === householdId) return;
+    if (!confirm(`世帯コード\n「${code.trim()}」\nに参加しますか？`)) return;
+    householdId = code.trim();
+    localStorage.setItem(`kakeibo_hh_${currentUser.uid}`, householdId);
+    renderHouseholdBar();
+    subscribeFirestore();
+  }
+
+  function leaveHousehold() {
+    if (!confirm('自分の世帯に戻りますか？')) return;
+    localStorage.removeItem(`kakeibo_hh_${currentUser.uid}`);
+    householdId = currentUser.uid;
+    renderHouseholdBar();
+    subscribeFirestore();
+  }
 
   /* ── future forecast builder ── */
   function buildFcast() {
@@ -405,7 +610,7 @@
     document.getElementById('ss_total').textContent   = fmt(tot);
   }
 
-  /* ── load / save ── */
+  /* ── load ── */
   function loadMonth(mkey) {
     const src = data[mkey] || fcast[mkey] || {};
     INC.forEach(f => { const e=document.getElementById(f.id); e.value = FIXED[f.id]!==undefined?FIXED[f.id]:(src[f.id]||''); });
@@ -417,27 +622,29 @@
     calc();
   }
 
-  function persist() {
-    Object.keys(data).filter(m=>m<MIN_MONTH).forEach(m=>delete data[m]);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }
-
-  function saveData() {
+  /* ── save ── */
+  async function saveData() {
     const e = data[currentMonth] || {};
     INC.forEach(f => { e[f.id] = parseInt(document.getElementById(f.id).value)||0; });
     EXP.forEach(f => { e[f.id] = parseInt(document.getElementById(f.id).value)||0; });
     e.i_memo = document.getElementById('i_memo').value.trim();
     e.e_memo = document.getElementById('e_memo').value.trim();
     data[currentMonth] = e;
-    persist(); buildFcast(); toast('b-toast'); renderAll();
+    await persistFS(currentMonth);
+    toast('b-toast');
+    buildFcast();
+    renderAll();
   }
 
-  function saveSav() {
+  async function saveSav() {
     const e = data[currentMonth] || {};
     const sav = {}; ALL_SAV_F.forEach(f => { sav[f.id] = parseInt(document.getElementById(f.id).value)||0; });
     e.savings = sav;
     data[currentMonth] = e;
-    persist(); buildFcast(); toast('s-toast'); renderAll();
+    await persistFS(currentMonth);
+    toast('s-toast');
+    buildFcast();
+    renderAll();
   }
 
   function toast(id) {
@@ -475,32 +682,26 @@
   function buildRows(rows, months) {
     return rows.map(row => {
       if (row.spacer) return `<tr class="t-spacer"><td colspan="${months.length+1}"></td></tr>`;
-
       if (row.sublabel) return `<tr class="t-sub-label"><td colspan="${months.length+1}">${row.sublabel}</td></tr>`;
-
-      // Section header with subtotals per month
       if (row.sect) {
         const cells = row.vals.map((v,i) => {
           const fc = isFcast(months[i]) ? ' fcst-val' : '';
-          const cls = row.vcls;
           const d = v===0?'—':fmt(v);
-          return `<td class="${cls}${fc}">${d}</td>`;
+          return `<td class="${row.vcls}${fc}">${d}</td>`;
         }).join('');
         return `<tr class="t-sect ${row.cls}"><td>${row.label}</td>${cells}</tr>`;
       }
-
-      // Data row
-      let rc = row.rc||'';
+      const rc = row.rc||'';
       const ic = row.indent ? 't-indent' : '';
       const cells = row.vals.map((v,i) => {
         const fc = isFcast(months[i]) ? ' fcst-val' : '';
         let cls='', d='';
-        if (row.type==='inc')   { cls='income-val';  d=v===0?'—':fmt(v); }
-        else if (row.type==='exp')   { cls='expense-val'; d=v===0?'—':fmt(v); }
-        else if (row.type==='bal')   { cls=v>=0?'balance-pos':'balance-neg'; d=(v>=0?'+':'-')+fmt(v); }
-        else if (row.type==='cash')  { cls=v<0?'balance-neg':'cash-val'; d=v===0?'—':fmt(v); }
-        else if (row.type==='sec')   { cls='sec-val'; d=v===0?'—':fmt(v); }
-        else if (row.type==='sav')   { cls='savings-val'; d=fmt(v); }
+        if      (row.type==='inc')  { cls='income-val';  d=v===0?'—':fmt(v); }
+        else if (row.type==='exp')  { cls='expense-val'; d=v===0?'—':fmt(v); }
+        else if (row.type==='bal')  { cls=v>=0?'balance-pos':'balance-neg'; d=(v>=0?'+':'-')+fmt(v); }
+        else if (row.type==='cash') { cls=v<0?'balance-neg':'cash-val'; d=v===0?'—':fmt(v); }
+        else if (row.type==='sec')  { cls='sec-val'; d=v===0?'—':fmt(v); }
+        else if (row.type==='sav')  { cls='savings-val'; d=fmt(v); }
         return `<td class="${cls}${fc}">${d}</td>`;
       }).join('');
       return `<tr class="${rc} ${ic}"><td>${row.label}</td>${cells}</tr>`;
@@ -512,9 +713,7 @@
     const thead = document.getElementById('b-thead');
     const tbody = document.getElementById('b-tbody');
     if (!months.length) { thead.innerHTML=''; tbody.innerHTML=`<tr><td class="no-data" colspan="2">保存データなし</td></tr>`; return; }
-
     thead.innerHTML = hdr(months);
-
     const rows = [];
     rows.push({ sect:true, label:'▼ 入金', cls:'t-income-h', vcls:'income-val', vals:months.map(m=>mIncome(m)) });
     INC.forEach(f => rows.push({ label:f.label, type:'inc', indent:true, vals:months.map(m=>(mdata(m)[f.id]||0)) }));
@@ -523,7 +722,6 @@
     EXP.forEach(f => rows.push({ label:f.label+(f.fixed?' *':''), type:'exp', indent:true, vals:months.map(m=>FIXED[f.id]!==undefined?FIXED[f.id]:(mdata(m)[f.id]||0)) }));
     rows.push({ spacer:true });
     rows.push({ label:'収支', type:'bal', rc:'t-balance', vals:months.map(m=>mBal(m)) });
-
     tbody.innerHTML = buildRows(rows, months);
   }
 
@@ -532,25 +730,19 @@
     const thead = document.getElementById('s-thead');
     const tbody = document.getElementById('s-tbody');
     if (!months.length) { thead.innerHTML=''; tbody.innerHTML=`<tr><td class="no-data" colspan="2">保存データなし</td></tr>`; return; }
-
     thead.innerHTML = hdr(months);
-
     const rows = [];
     rows.push({ label:'合計', type:'sav', rc:'t-sav-total', vals:months.map(m=>savTotal(m)) });
     rows.push({ spacer:true });
-
     rows.push({ sect:true, label:'▼ 現金', cls:'t-cash-h', vcls:'cash-val', vals:months.map(m=>cashTotal(m)) });
     CASH_F.forEach(f => rows.push({ label:f.label, type:'cash', indent:true, vals:months.map(m=>(getSavData(m)[f.id]||0)) }));
     rows.push({ label:'特別支出', type:'cash', indent:true, rc:'t-tokubetsu', vals:months.map(m=>tokubetsu(cashTotal(m),getSavData(m))) });
-
     rows.push({ spacer:true });
-
     rows.push({ sect:true, label:'▼ 証券', cls:'t-sec-h', vcls:'sec-val', vals:months.map(m=>secTotal(getSavData(m))) });
     rows.push({ sublabel:'夫' });
     SEC_F.filter(f=>f.sub==='夫').forEach(f => rows.push({ label:f.label, type:'sec', indent:true, vals:months.map(m=>(getSavData(m)[f.id]||0)) }));
     rows.push({ sublabel:'妻' });
     SEC_F.filter(f=>f.sub==='妻').forEach(f => rows.push({ label:f.label, type:'sec', indent:true, vals:months.map(m=>(getSavData(m)[f.id]||0)) }));
-
     tbody.innerHTML = buildRows(rows, months);
   }
 
@@ -572,7 +764,6 @@
     b.push([]);
     b.push(['メモ(入金その他)',...months.map(m=>mdata(m).i_memo||'')]);
     b.push(['メモ(その他引落)',...months.map(m=>mdata(m).e_memo||'')]);
-
     const ws1 = XLSX.utils.aoa_to_sheet(b);
     ws1['!cols'] = [{wch:20},...months.map(()=>({wch:14}))];
     XLSX.utils.book_append_sheet(wb, ws1, '家計推移');
@@ -589,7 +780,6 @@
     SEC_F.filter(f=>f.sub==='夫').forEach(f=>s.push(['　　'+f.label,...months.map(m=>getSavData(m)[f.id]||0)]));
     s.push(['　妻']);
     SEC_F.filter(f=>f.sub==='妻').forEach(f=>s.push(['　　'+f.label,...months.map(m=>getSavData(m)[f.id]||0)]));
-
     const ws2 = XLSX.utils.aoa_to_sheet(s);
     ws2['!cols'] = [{wch:20},...months.map(()=>({wch:14}))];
     XLSX.utils.book_append_sheet(wb, ws2, '貯蓄推移');
@@ -607,14 +797,11 @@
           cell.style.transform = `translateX(${x}px)`;
         });
       };
-      // 初期位置リセット
       el.dispatchEvent(new Event('scroll'));
     });
   }
 
   /* ── init ── */
-  Object.keys(data).filter(m=>m<MIN_MONTH).forEach(m=>delete data[m]);
-  persist();
   buildFcast();
   updateLabel();
   loadMonth(currentMonth);
