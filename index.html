@@ -288,6 +288,7 @@
         <tr class="indented"><td>債権</td><td><input class="amount-input" type="number" id="s_otto_saikken" min="0" placeholder="0" oninput="calcSav()"></td></tr>
         <tr><td colspan="2" class="sub-label">妻</td></tr>
         <tr class="indented"><td>NISA</td><td><input class="amount-input" type="number" id="s_tsuma_nisa" min="0" placeholder="0" oninput="calcSav()"></td></tr>
+        <tr class="indented"><td>投信</td><td><input class="amount-input" type="number" id="s_tsuma_toushi" min="0" placeholder="0" oninput="calcSav()"></td></tr>
         <tr class="indented"><td>株式</td><td><input class="amount-input" type="number" id="s_tsuma_kabu" min="0" placeholder="0" oninput="calcSav()"></td></tr>
       </tbody>
     </table>
@@ -331,7 +332,7 @@
   const SAV_INIT = {
     s_seikatsukibo:160657, s_kyoiku:1360000, s_jyutaku:983612,
     s_otto_nisa:4743397, s_otto_toushi:977829, s_otto_kabu:0,
-    s_otto_saikken:200000, s_tsuma_nisa:0, s_tsuma_kabu:0,
+    s_otto_saikken:200000, s_tsuma_nisa:0, s_tsuma_toushi:0, s_tsuma_kabu:0,
   };
 
   const INC = [
@@ -360,6 +361,7 @@
     {id:'s_otto_kabu',    label:'株式',   sub:'夫'},
     {id:'s_otto_saikken', label:'債権',   sub:'夫'},
     {id:'s_tsuma_nisa',   label:'NISA',   sub:'妻'},
+    {id:'s_tsuma_toushi', label:'投信',   sub:'妻'},
     {id:'s_tsuma_kabu',   label:'株式',   sub:'妻'},
   ];
   const ALL_SAV_F = [...CASH_F, ...SEC_F];
@@ -549,13 +551,14 @@
         _fcast: true,
         savings: {
           s_seikatsukibo: prevSav.s_seikatsukibo || 0,
-          s_kyoiku:       (prevSav.s_kyoiku       || 0) + 80000,
+          s_kyoiku:       (prevSav.s_kyoiku       || 0) + 100000,
           s_jyutaku:      prevSav.s_jyutaku       || 0,
           s_otto_nisa:    (prevSav.s_otto_nisa    || 0) + 65000,
           s_otto_toushi:  prevSav.s_otto_toushi   || 0,
           s_otto_kabu:    prevSav.s_otto_kabu     || 0,
           s_otto_saikken: prevSav.s_otto_saikken  || 0,
           s_tsuma_nisa:   prevSav.s_tsuma_nisa    || 0,
+          s_tsuma_toushi: prevSav.s_tsuma_toushi  || 0,
           s_tsuma_kabu:   prevSav.s_tsuma_kabu    || 0,
         }
       };
